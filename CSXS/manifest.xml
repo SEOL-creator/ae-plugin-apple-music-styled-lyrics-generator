@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<ExtensionManifest Version="7.0" ExtensionBundleId="dev.sbseol.APMSLyrics"
+    ExtensionBundleVersion="0.1.0"
+    ExtensionBundleName="APMSLyrics" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <ExtensionList>
+        <Extension Id="dev.sbseol.APMSLyrics.panel" Version="0.1.0" />
+    </ExtensionList>
+
+    <ExecutionEnvironment>
+        <HostList>
+            <Host Name="AEFT" Version="18.4" />
+        </HostList>
+        <LocaleList>
+            <Locale Code="All" />
+        </LocaleList>
+        <RequiredRuntimeList>
+            <RequiredRuntime Name="CSXS" Version="11.0" />
+        </RequiredRuntimeList>
+    </ExecutionEnvironment>
+
+    <DispatchInfoList>
+        <Extension Id="dev.sbseol.APMSLyrics.panel">
+            <DispatchInfo>
+                <Resources>
+                    <MainPath>./client/index.html</MainPath>
+                    <ScriptPath>./host/Main.jsx</ScriptPath>
+                    <CEFCommandLine />
+                </Resources>
+                <Lifecycle>
+                    <AutoVisible>true</AutoVisible>
+                </Lifecycle>
+                <UI>
+                    <Type>Panel</Type>
+                    <Menu>Generate APMS Lyrics Composition</Menu>
+                    <Geometry>
+                        <Size>
+                            <Height>500</Height>
+                            <Width>350</Width>
+                        </Size>
+                        <MaxSize>
+                            <Height>700</Height>
+                            <Width>500</Width>
+                        </MaxSize>
+                        <MinSize>
+                            <Height>200</Height>
+                            <Width>250</Width>
+                        </MinSize>
+                    </Geometry>
+                </UI>
+            </DispatchInfo>
+        </Extension>
+    </DispatchInfoList>
+</ExtensionManifest>
