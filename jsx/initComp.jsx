@@ -54,8 +54,7 @@ LyricsLayerGenerator.prototype.createTextLayer = function (index, text) {
     }
     textProp.setValue(sourceText);
 
-    textLayer.name = "[" + (index + 1) + "] " + text;
-    // textLayer.position.setValue([this.initialPosition[0], this.initialPosition[1] + this.layerHeightsAccumulator[index + 1] + this.gap * this.visibleLayerCount[index + 1]]);
+    textLayer.name = "[" + index + "] " + text;
     textLayer.anchorPoint.setValue([-this.boxSize[0] / 2, -this.boxSize[1] / 2]);
 
     return textLayer;
@@ -71,10 +70,8 @@ LyricsLayerGenerator.prototype.addLayer = function (index, text) {
         var layer = this.createTextLayer(index, text);
     }
 
-    this.layerHeightsAccumulator[index + 2] = this.layerHeightsAccumulator[index + 1] + (isInterval ? 0 : layer.sourceRectAtTime(0, false).height);
-    // this.layerHeightsAccumulator[index + 2] = this.layerHeightsAccumulator[index] + (isInterval ? 0 : layer.sourceRectAtTime(0, false).height * 2);
-    this.visibleLayerCount[index + 2] = this.visibleLayerCount[index + 1] + (isInterval ? 0 : 1);
-    // this.visibleLayerCount[index + 2] = this.visibleLayerCount[index] + (isInterval ? 0 : 2);
+    this.layerHeightsAccumulator[index + 1] = this.layerHeightsAccumulator[index] + (isInterval ? 0 : layer.sourceRectAtTime(0, false).height);
+    this.visibleLayerCount[index + 1] = this.visibleLayerCount[index] + (isInterval ? 0 : 1);
     this.increaseProgress();
 
     return layer;
@@ -105,7 +102,7 @@ function generateLyricsComposition(compName, lyrics, marginLR, displayPosFromTop
     var backgroundComp = root.items.addComp("_" + compName + "_background", width, height, pixelAspect, duration, frameRate);
 
     textLayerGenerater = new LyricsLayerGenerator(lyricsComp, width, [marginLR, displayPosFromTop], FONT_OPTIONS, lyrics.length);
-    for (var i = 0; i < lyrics.length; i++) {
+    for (var i = 1; i <= lyrics.length; i++) {
         textLayerGenerater.addLayer(i, lyrics[i]);
     }
     var layerHeightsAccumulated = textLayerGenerater.layerHeightsAccumulator;
@@ -126,23 +123,6 @@ function generateLyricsComposition(compName, lyrics, marginLR, displayPosFromTop
     }
 }
 
-function test() {
-    var layer = app.project.activeItem.layer(2);
-
-    try {
-        // var effects = layer;
-        var effects = layer.property("ADBE Effect Parade").property("ADBE Gaussian Blur 2");
-        var effectCount = effects.numProperties;
-
-        for (var i = 1; i <= effectCount; i++) {
-            alert("Effect: " + effects.property(i).matchName);
-        }
-    } catch (e) {
-        alert(e.message + " Line: " + e.line);
-    }
-}
-
 $._ext = {
     generateLyricsComposition: generateLyricsComposition,
-    test: test,
 };
