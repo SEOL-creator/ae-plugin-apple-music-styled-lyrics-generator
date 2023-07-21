@@ -96,14 +96,17 @@ function generateLyricsComposition(compName, lyrics, marginLR, displayPosFromTop
     };
     FONT_OPTIONS["leading"] = FONT_OPTIONS.fontSize * 1.2;
 
+    app.beginUndoGroup("Generate Lyrics Composition");
     var root = app.project.items.addFolder(compName);
     var masterComp = root.items.addComp(compName, width, height, pixelAspect, duration, frameRate);
     var lyricsComp = root.items.addComp("_" + compName + "_lyrics", width, height, pixelAspect, duration, frameRate);
     var backgroundComp = root.items.addComp("_" + compName + "_background", width, height, pixelAspect, duration, frameRate);
+    masterComp.layers.add(backgroundComp);
+    masterComp.layers.add(lyricsComp);
 
     textLayerGenerater = new LyricsLayerGenerator(lyricsComp, width, [marginLR, displayPosFromTop], FONT_OPTIONS, lyrics.length);
     for (var i = 1; i <= lyrics.length; i++) {
-        textLayerGenerater.addLayer(i, lyrics[i]);
+        textLayerGenerater.addLayer(i, lyrics[i - 1]);
     }
     var layerHeightsAccumulated = textLayerGenerater.layerHeightsAccumulator;
     var visibleLayerCount = textLayerGenerater.visibleLayerCount;
@@ -121,6 +124,8 @@ function generateLyricsComposition(compName, lyrics, marginLR, displayPosFromTop
     } catch (e) {
         alert(e.message + " Line: " + e.line);
     }
+
+    app.endUndoGroup();
 }
 
 $._ext = {
