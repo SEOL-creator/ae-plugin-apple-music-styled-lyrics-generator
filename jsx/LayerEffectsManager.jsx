@@ -1,204 +1,234 @@
-function addProperty(layer, name) {
-    var property = layer.property(name);
-    if (property === null) {
-        property = layer.addProperty(name);
+$._apmsl.LayerEffectsManager = function (lyricsComp, style, layerInfo) {
+    this.comp = lyricsComp;
+    this.layers = lyricsComp.layers;
+    this.layerCount = this.layers.length; // number of layers in the lyrics comp. Should be fixed to count only the lyrics layers
+    this.timingLayer = this.layers.byName("Timing Markers");
+    this.markerCount = this.timingLayer.marker.numKeys;
+
+    this.style = style;
+    this.layerHeightsAccumulatedAtIndex = layerInfo.layerHeightsAccumulatedAtIndex;
+    this.visibleLayerCountAtIndex = layerInfo.visibleLayerCountAtIndex;
+    this.invisibleLayerCountAtIndex = layerInfo.invisibleLayerCountAtIndex;
+
+    this.numsVisibleLayers = [-4, 9]; // Cull layers that are not in this range
+
+    this.DEFAULT_LYRICS_DURATION = this.style.compStyle.duration / (this.markerCount + 1);
+    this.ANIMATION_DURATION = 0.5;
+    this.ANIMATION_DELAY = 0.04;
+
+    this.KEY_EASE_IN = new KeyframeEase(0, 85);
+    this.KEY_EASE_OUT = new KeyframeEase(0, 30);
+};
+
+$._apmsl.LayerEffectsManager.prototype.getLyricLayer = function (index) {
+    return this.layers[this.layerCount - (index - 1)];
+};
+
+$._apmsl.LayerEffectsManager.prototype.getLayerPosY = function (_, layerIndex, markerIndex) {
+    var invisibleLayerSpacer = this.invisibleLayerCountAtIndex[layerIndex];
+
+    if (markerIndex < layerIndex && this.invisibleLayerCountAtIndex[markerIndex] < this.invisibleLayerCountAtIndex[markerIndex + 1]) {
+        invisibleLayerSpacer--;
     }
-    return property;
-}
 
-function setOrAddKey(property, keyIndex, time, value, easeIn, easeOut) {
-    if (property.numKeys > keyIndex) {
-        property.setValueAtKey(keyIndex, value);
-    } else {
-        property.setValueAtTime(time, value);
+    return (
+        this.style.lyricsStyle.displayPosTop +
+        this.layerHeightsAccumulatedAtIndex[layerIndex] +
+        this.style.lyricsStyle.gap * this.visibleLayerCountAtIndex[layerIndex] -
+        invisibleLayerSpacer * this.style.lyricsStyle.intervalLayerHeight -
+        this.layerHeightsAccumulatedAtIndex[markerIndex] -
+        this.style.lyricsStyle.gap * this.visibleLayerCountAtIndex[markerIndex] +
+        this.invisibleLayerCountAtIndex[markerIndex] * this.style.lyricsStyle.intervalLayerHeight
+    );
+};
+
+$._apmsl.LayerEffectsManager.prototype.getDiff = function (layerIndex, markerIndex) {
+    var diff = this.visibleLayerCountAtIndex[markerIndex] - this.visibleLayerCountAtIndex[layerIndex];
+    if (this.invisibleLayerCountAtIndex[markerIndex] < this.invisibleLayerCountAtIndex[markerIndex + 1] && layerIndex > markerIndex) {
+        // When invisible layer is focused,
+        // the diff of the layers following the invisible layer should be -1. not zero.
+        diff -= 1;
     }
-    property.setTemporalEaseAtKey(keyIndex, easeIn, easeOut);
-}
 
-function getDiff(index, markerI) {
-    return markerI - index;
-}
-
-function getAbsDiff(index, markerI, max) {
-    var diff = Math.abs(index - markerI);
-    if (max && diff > max) return max;
     return diff;
-}
+};
 
-function getGaussianBlurMultiplier(index, i) {
-    return 0.1 * getAbsDiff(index, i, 3) + 0.05 * getAbsDiff(index, i, 1); // 0, 0.15, 0.25, 0.35
-}
+$._apmsl.LayerEffectsManager.prototype.getGaussianBlurValue = function (diff, layerIndex, markerIndex) {
+    var limitValue = function (num, max) {
+        if (num > max) return max;
+        return num;
+    };
 
-function applyLayerEffects(layer, timingLayer, index, layerCount, compWidth, fontOptions, gap, initialPosition, layerHeightsAccumulated, visibleLayerCount, DEFAULT_LYRICS_DURATION) {
-    var ANIMATION_DURATION = 0.5;
-    var ANIMATION_DELAY = 0.05;
+    return this.style.fontStyle.fontSize * (0.1 * limitValue(Math.abs(diff), 3) + 0.05 * limitValue(Math.abs(diff), 1)); // 0, 0.15, 0.25, 0.35
+};
 
-    var EASE_IN = new KeyframeEase(0, 85);
-    var EASE_OUT = new KeyframeEase(0, 30);
-
-    var markers = timingLayer.marker;
+$._apmsl.LayerEffectsManager.prototype.updateLayer = function (layerIndex) {
+    var layer = this.getLyricLayer(layerIndex);
 
     var effects = layer.property("ADBE Effect Parade");
     var transforms = layer.property("ADBE Transform Group");
+
+    transforms.property("ADBE Position").dimensionsSeparated = true;
+    transforms.property("ADBE Position_0").setValue(this.style.lyricsStyle.marginLR);
+    var keyPosition = new $._apmsl.UseKey(
+        transforms.property("ADBE Position_1"),
+        this.getLayerPosY,
+        this,
+        function (value) {
+            return "transform.yPosition=" + value + ";";
+        },
+        function (markerIndex, diff, DEFAULT_LYRICS_DURATION, ANIMATION_DELAY) {
+            return (
+                'transform.yPosition.valueAtTime(time-thisComp.layer("Timing Markers").marker.key(' + markerIndex + ").time+" + (DEFAULT_LYRICS_DURATION * markerIndex + ANIMATION_DELAY * diff) + ")"
+            );
+        },
+        this.style.lyricsStyle.displayPosTop + this.layerHeightsAccumulatedAtIndex[layerIndex] + this.style.lyricsStyle.gap * this.visibleLayerCountAtIndex[layerIndex],
+        [this.KEY_EASE_IN],
+        [this.KEY_EASE_OUT],
+        this.DEFAULT_LYRICS_DURATION,
+        this.ANIMATION_DELAY,
+        this.ANIMATION_DURATION
+    );
 
     if (effects.property("ADBE Gaussian Blur 2") === null) {
         effects.addProperty("ADBE Gaussian Blur 2");
         effects.property("ADBE Gaussian Blur 2").property(3).setValue(false);
     }
+    var keyGaussianBlur = new $._apmsl.UseKey(
+        effects.property("ADBE Gaussian Blur 2").property(1),
+        this.getGaussianBlurValue,
+        this,
+        function (value) {
+            return "effect(1)(1).value=" + value + ";";
+        },
+        function (markerIndex, diff, DEFAULT_LYRICS_DURATION, ANIMATION_DELAY) {
+            return 'effect(1)(1).valueAtTime(time-thisComp.layer("Timing Markers").marker.key(' + markerIndex + ").time+" + (DEFAULT_LYRICS_DURATION * markerIndex + ANIMATION_DELAY * diff) + ")";
+        },
+        this.getGaussianBlurValue(this.getDiff(layerIndex, 1), layerIndex, 1),
+        [this.KEY_EASE_IN],
+        [this.KEY_EASE_OUT],
+        this.DEFAULT_LYRICS_DURATION,
+        this.ANIMATION_DELAY,
+        this.ANIMATION_DURATION
+    );
 
-    var expressionPosition = "";
-    var gaussianBlurKeyIndex = 1;
-    var expressionGaussianBlur = "";
-    var opacityKeyIndex = 1;
-    var expressionOpacity = "";
-    var expressionScale = "";
+    var OPACITY_NOT_FOCUSED = 70;
+    var keyOpacity = new $._apmsl.UseKey(
+        transforms.property("ADBE Opacity"),
+        function (diff, layerIndex, markerIndex) {
+            return diff === 0 ? 100 : OPACITY_NOT_FOCUSED;
+        },
+        this,
+        function (value) {
+            return "transform.opacity=" + value + ";";
+        },
+        function (markerIndex, diff, DEFAULT_LYRICS_DURATION, ANIMATION_DELAY) {
+            return 'transform.opacity.valueAtTime(time-thisComp.layer("Timing Markers").marker.key(' + markerIndex + ").time+" + (DEFAULT_LYRICS_DURATION * markerIndex + ANIMATION_DELAY * diff) + ")";
+        },
+        OPACITY_NOT_FOCUSED,
+        [this.KEY_EASE_IN],
+        [this.KEY_EASE_OUT],
+        this.DEFAULT_LYRICS_DURATION,
+        this.ANIMATION_DELAY,
+        this.ANIMATION_DURATION
+    );
 
-    for (var i = 1; i <= markers.numKeys; i++) {
-        // Position
-        setOrAddKey(
-            transforms.property("ADBE Position"),
-            i * 2 - 1,
-            DEFAULT_LYRICS_DURATION * i - ANIMATION_DURATION,
-            [initialPosition[0], initialPosition[1] + layerHeightsAccumulated[index] + gap * visibleLayerCount[index] - layerHeightsAccumulated[i - 1] - gap * visibleLayerCount[i - 1]],
-            [EASE_IN],
-            [EASE_OUT]
-        );
-        setOrAddKey(
-            transforms.property("ADBE Position"),
-            i * 2,
-            DEFAULT_LYRICS_DURATION * i,
-            [initialPosition[0], initialPosition[1] + layerHeightsAccumulated[index] + gap * visibleLayerCount[index] - layerHeightsAccumulated[i] - gap * visibleLayerCount[i]],
-            [EASE_IN],
-            [EASE_OUT]
-        );
-        // prettier-ignore
-        expressionPosition = expressionPosition +
-        ((i === 1) ? "if" : "else if") +
-        "(time<=thisComp.layer(\"Timing Handler\").marker.key("+i+").time-(" + (ANIMATION_DELAY * getDiff(index, i) + ANIMATION_DURATION) + ")){" +
-        "transform.position=[" + initialPosition[0] + ",transform.position.valueAtTime(" + (DEFAULT_LYRICS_DURATION * i - ANIMATION_DURATION) + ")[1]];}" + //before nth animation
-        "else if" +
-        "(time<=thisComp.layer(\"Timing Handler\").marker.key("+i+").time-(" + (ANIMATION_DELAY * getDiff(index, i)) + ")){" +
-        "transform.position=[" + initialPosition[0] + ",transform.position.valueAtTime(time-thisComp.layer(\"Timing Handler\").marker.key("+i+").time+" + (DEFAULT_LYRICS_DURATION * i + ANIMATION_DELAY * getDiff(index, i)) + ")[1]];}"; //during nth animation
+    var keyScale = new $._apmsl.UseKey(
+        transforms.property("ADBE Scale"),
+        function (diff, layerIndex, markerIndex) {
+            return diff === 0 ? [100, 100] : [96, 96];
+        },
+        this,
+        function (value) {
+            if (typeof value === "object") return "transform.scale=[" + value[0] + "," + value[1] + "];";
+            return "transform.scale=" + value + ";";
+        },
+        function (markerIndex, diff, DEFAULT_LYRICS_DURATION, ANIMATION_DELAY) {
+            return 'transform.scale.valueAtTime(time-thisComp.layer("Timing Markers").marker.key(' + markerIndex + ").time+" + (DEFAULT_LYRICS_DURATION * markerIndex + ANIMATION_DELAY * diff) + ")";
+        },
+        [96, 96],
+        [this.KEY_EASE_IN, this.KEY_EASE_IN, this.KEY_EASE_IN],
+        [this.KEY_EASE_OUT, this.KEY_EASE_OUT, this.KEY_EASE_OUT],
+        this.DEFAULT_LYRICS_DURATION,
+        this.ANIMATION_DELAY,
+        this.ANIMATION_DURATION
+    );
 
-        // // Gaussian Blur
-        if (getAbsDiff(index, i) <= 3) {
-            setOrAddKey(
-                effects.property("ADBE Gaussian Blur 2").property(1),
-                gaussianBlurKeyIndex++,
-                DEFAULT_LYRICS_DURATION * i - ANIMATION_DURATION,
-                fontOptions.fontSize * getGaussianBlurMultiplier(index, i - 1),
-                [EASE_IN],
-                [EASE_OUT]
-            );
-            setOrAddKey(
-                effects.property("ADBE Gaussian Blur 2").property(1),
-                gaussianBlurKeyIndex++,
-                DEFAULT_LYRICS_DURATION * i,
-                fontOptions.fontSize * getGaussianBlurMultiplier(index, i),
-                [EASE_IN],
-                [EASE_OUT]
-            );
-            // prettier-ignore
-            expressionGaussianBlur = expressionGaussianBlur +
-            ((gaussianBlurKeyIndex === 3) ? "if" : "else if") +
-            "(time<=thisComp.layer(\"Timing Handler\").marker.key("+i+").time-(" + (ANIMATION_DELAY * getDiff(index, i) + ANIMATION_DURATION) + ")){" +
-            "effect(1)(1).value=effect(1)(1).valueAtTime(" + (DEFAULT_LYRICS_DURATION * i - ANIMATION_DURATION) + ");}" + //before nth animation
-            "else if" +
-            "(time<=thisComp.layer(\"Timing Handler\").marker.key("+i+").time-(" + (ANIMATION_DELAY * getDiff(index, i)) + ")){" +
-            "effect(1)(1).value=effect(1)(1).valueAtTime(time-thisComp.layer(\"Timing Handler\").marker.key("+i+").time+" + (DEFAULT_LYRICS_DURATION * i + ANIMATION_DELAY * getDiff(index, i)) + ");}"; //during nth animation
+    for (var i = 1; i <= this.markerCount; i++) {
+        // var diff = this.visibleLayerCountAtIndex[i] - this.visibleLayerCountAtIndex[layerIndex];
+        // if (this.invisibleLayerCountAtIndex[i] < this.invisibleLayerCountAtIndex[i + 1] && layerIndex > i) {
+        //     // When invisible layer is focused,
+        //     // the diff of the layers following the invisible layer should be -1. not zero.
+        //     diff -= 1;
+        // }
+
+        var diff = this.getDiff(layerIndex, i);
+
+        try {
+            // Position
+            if (-diff <= this.numsVisibleLayers[1] && -diff >= this.numsVisibleLayers[0] && i !== this.markerCount) {
+                // when last marker is focused (=song is end and no lyrics are highlighted), layers should keep their position.
+
+                keyPosition.key(diff, layerIndex, i);
+            }
+        } catch (e) {
+            alert(e.message + " Line: " + e.line + e.fileName);
+            alert("Position\n" + "diff: " + diff + " layerIndex: " + layerIndex + " i: " + i);
         }
-
-        // Opacity
-        if (getAbsDiff(index, i) <= 1) {
-            setOrAddKey(transforms.property("ADBE Opacity"), opacityKeyIndex++, markers.keyTime(i) - ANIMATION_DURATION, 100 - 30 * getAbsDiff(index, i - 1, 1), [EASE_IN], [EASE_OUT]);
-            setOrAddKey(transforms.property("ADBE Opacity"), opacityKeyIndex++, markers.keyTime(i), 100 - 30 * getAbsDiff(index, i, 1), [EASE_IN], [EASE_OUT]);
-            // prettier-ignore
-            expressionOpacity = expressionOpacity +
-            ((opacityKeyIndex === 3) ? "if" : "else if") +
-            "(time<=thisComp.layer(\"Timing Handler\").marker.key("+i+").time-(" + (ANIMATION_DELAY * getDiff(index, i) + ANIMATION_DURATION) + ")){" +
-            "transform.opacity=transform.opacity.valueAtTime(" + (DEFAULT_LYRICS_DURATION * i - ANIMATION_DURATION) + ");}" + //before nth animation
-            "else if" +
-            "(time<=thisComp.layer(\"Timing Handler\").marker.key("+i+").time-(" + (ANIMATION_DELAY * getDiff(index, i)) + ")){" +
-            "transform.opacity=transform.opacity.valueAtTime(time-thisComp.layer(\"Timing Handler\").marker.key("+i+").time+" + (DEFAULT_LYRICS_DURATION * i + ANIMATION_DELAY * getDiff(index, i)) + ");}"; //during nth animation
+        try {
+            // Gaussian Blur
+            if (Math.abs(layerIndex - i) <= this.numsVisibleLayers[0] || Math.abs(layerIndex - i) <= this.numsVisibleLayers[1]) {
+                keyGaussianBlur.key(diff, layerIndex, i);
+            }
+        } catch (e) {
+            alert(e.message + " Line: " + e.line + e.fileName);
+            alert("Gaussian Blur\n" + "diff: " + diff + " layerIndex: " + layerIndex + " i: " + i);
         }
-
-        // Scale
-        if (getDiff(index, i) === 0) {
-            setOrAddKey(transforms.property("ADBE Scale"), 1, markers.keyTime(i) - ANIMATION_DURATION, [96, 96], [EASE_IN, EASE_IN, EASE_IN], [EASE_OUT, EASE_OUT, EASE_OUT]);
-            setOrAddKey(transforms.property("ADBE Scale"), 2, markers.keyTime(i), [100, 100], [EASE_IN, EASE_IN, EASE_IN], [EASE_OUT, EASE_OUT, EASE_OUT]);
-            // prettier-ignore
-            expressionScale = expressionScale +
-            "if" +
-            "(time<=thisComp.layer(\"Timing Handler\").marker.key("+i+").time-(" + (ANIMATION_DELAY * getDiff(index, i) + ANIMATION_DURATION) + ")){" +
-            "transform.scale=[96,96];}" + //before nth animation
-            "else if" +
-            "(time<=thisComp.layer(\"Timing Handler\").marker.key("+i+").time-(" + (ANIMATION_DELAY * getDiff(index, i)) + ")){" +
-            "transform.scale=transform.scale.valueAtTime(time-thisComp.layer(\"Timing Handler\").marker.key("+i+").time+" + (DEFAULT_LYRICS_DURATION * i + ANIMATION_DELAY * getDiff(index, i)) + ");}"; //during nth animation
+        try {
+            // Opacity
+            if (Math.abs(layerIndex - i) <= 1) {
+                keyOpacity.key(diff, layerIndex, i);
+            }
+        } catch (e) {
+            alert(e.message + " Line: " + e.line + e.fileName);
+            alert("Opacity\n" + "diff: " + diff + " layerIndex: " + layerIndex + " i: " + i);
         }
-        if (getDiff(index, i) === 1) {
-            setOrAddKey(transforms.property("ADBE Scale"), 3, markers.keyTime(i) - ANIMATION_DURATION, [100, 100], [EASE_IN, EASE_IN, EASE_IN], [EASE_OUT, EASE_OUT, EASE_OUT]);
-            setOrAddKey(transforms.property("ADBE Scale"), 4, markers.keyTime(i), [96, 96], [EASE_IN, EASE_IN, EASE_IN], [EASE_OUT, EASE_OUT, EASE_OUT]);
-            // prettier-ignore
-            expressionScale = expressionScale +
-            "else if" +
-            "(time<=thisComp.layer(\"Timing Handler\").marker.key("+i+").time-(" + (ANIMATION_DELAY * getDiff(index, i) + ANIMATION_DURATION) + ")){" +
-            "transform.scale=[100,100];}" + //before nth animation
-            "else if" +
-            "(time<=thisComp.layer(\"Timing Handler\").marker.key("+i+").time-(" + (ANIMATION_DELAY * getDiff(index, i)) + ")){" +
-            "transform.scale=transform.scale.valueAtTime(time-thisComp.layer(\"Timing Handler\").marker.key("+i+").time+" + (DEFAULT_LYRICS_DURATION * i + ANIMATION_DELAY * getDiff(index, i)) + ");}"; //during nth animation
+        try {
+            // Scale
+            if (Math.abs(layerIndex - i) <= 1) {
+                keyScale.key(diff, layerIndex, i);
+            }
+        } catch (e) {
+            alert(e.message + " Line: " + e.line + e.fileName);
+            alert("Scale\n" + "diff: " + diff + " layerIndex: " + layerIndex + " i: " + i);
         }
     }
 
-    transforms.property("ADBE Position").expression =
-        expressionPosition + "else{transform.position=[" + initialPosition[0] + ",transform.position.valueAtTime(" + DEFAULT_LYRICS_DURATION * markers.numKeys + ")[1]];}";
-    effects.property("ADBE Gaussian Blur 2").property(1).expression =
-        expressionGaussianBlur + "else{effect(1)(1).value=" + fontOptions.fontSize * getGaussianBlurMultiplier(index, markers.numKeys) + ";}";
-    transforms.property("ADBE Opacity").expression = expressionOpacity + "else{transform.opacity=70;}";
-    transforms.property("ADBE Scale").expression = expressionScale + "else{transform.scale=[96,96];}";
-}
+    transforms.property("ADBE Position_1").expression = keyPosition.getExpression(
+        this.style.lyricsStyle.displayPosTop +
+            this.layerHeightsAccumulatedAtIndex[layerIndex] +
+            this.style.lyricsStyle.gap * this.visibleLayerCountAtIndex[layerIndex] -
+            this.layerHeightsAccumulatedAtIndex[this.markerCount - 1] -
+            this.style.lyricsStyle.gap * this.visibleLayerCountAtIndex[this.markerCount - 1]
+    );
+    effects.property("ADBE Gaussian Blur 2").property(1).expression = keyGaussianBlur.getExpression(
+        this.getGaussianBlurValue(this.visibleLayerCountAtIndex[this.markerCount] - this.visibleLayerCountAtIndex[layerIndex], layerIndex, this.markerCount)
+    );
+    transforms.property("ADBE Opacity").expression = keyOpacity.getExpression(OPACITY_NOT_FOCUSED);
+    transforms.property("ADBE Scale").expression = keyScale.getExpression("[96, 96]");
+};
 
-function validate(thisComp) {
-    return true;
-}
-
-applyEffects = function (thisComp, fontOptions, initialPosition, gap, layerHeightsAccumulated, visibleLayerCount, DEFAULT_LYRICS_DURATION) {
-    if (!validate()) {
-        alert("This composition does not seem to be a valid APMS lyrics composition.");
+$._apmsl.LayerEffectsManager.prototype.applyAll = function () {
+    try {
+        var progressWin = new $._apmsl.ProgressWindow("Applying Effects...", this.layerCount);
+        for (var i = 1; i < this.layerCount; i++) {
+            this.updateLayer(i);
+            progressWin.updateProgress(i);
+        }
+        progressWin.close(function () {
+            this.comp.openInViewer();
+        });
+    } catch (e) {
+        alert(e.message + " Line: " + e.line);
     }
-
-    var layers = thisComp.layers;
-    var layerCount = layers.length;
-
-    var progressWin = new Window("palette", "Applying Effects...", [150, 150, 600, 300]);
-    progressWin.pnl = progressWin.add("panel", [10, 10, 440, 100], "Progress");
-    progressWin.pnl.progBar = progressWin.pnl.add("progressbar", [20, 35, 410, 60], 0, layerCount);
-    progressWin.pnl.progBarLabel = progressWin.pnl.add("statictext", [20, 20, 320, 35], "0/" + layerCount);
-    progressWin.center();
-    progressWin.show();
-
-    var timingLayer = layers.byName("Timing Handler");
-
-    var markers = timingLayer.marker;
-
-    for (var i = layerCount; i > 1; i--) {
-        applyLayerEffects(
-            layers[i],
-            timingLayer,
-            layerCount - i + 1,
-            layerCount - 1,
-            thisComp.width,
-            fontOptions,
-            gap,
-            initialPosition,
-            layerHeightsAccumulated,
-            visibleLayerCount,
-            DEFAULT_LYRICS_DURATION
-        );
-
-        progressWin.pnl.progBar.value++;
-        progressWin.pnl.progBarLabel.text = progressWin.pnl.progBar.value + "/" + layerCount;
-        progressWin.update();
-    }
-
-    progressWin.close();
 };

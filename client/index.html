@@ -6,14 +6,47 @@
         <script type="text/javascript" src="./lib/CSInterface.js"></script>
         <script type="text/javascript" src="./lib/Vulcan.js"></script>
         <script type="text/javascript" src="./index.js"></script>
+        <link rel="stylesheet" href="reset.css" />
+        <link rel="stylesheet" href="index.css" />
     </head>
     <body>
-        <div>
-            <input type="text" id="compName" />
+        <div class="main">
+            <label>
+                <span>display position:</span>
+                <input id="displaypos" type="number" value="250" />
+            </label>
+            <label>
+                <span> margin left and right: </span>
+                <input id="marginlr" type="number" value="100" />
+            </label>
+            <button id="make">Make</button>
         </div>
-        <div>
-            <textarea id="lyrics" rows="36" cols="60"></textarea>
+        <div class="sep"></div>
+        <div class="description">
+            <h1>How to use</h1>
+            <ol>
+                <li>
+                    <h2>Create a composition for lyrics</h2>
+                </li>
+                <li>
+                    <h2>Add a text layer with lyrics</h2>
+                </li>
+                <li>
+                    <h2>Set text style</h2>
+                    <p>Recommended style for 1080px height:</p>
+                    <p>Font: Apple SD Gothic Neo (for korean text)</p>
+                    <p>Weight: Bold</p>
+                    <p>Font Size: 60px</p>
+                    <p>Line Height: 72px</p>
+                </li>
+                <li>
+                    <h2>Select the composition and hit 'Make' button</h2>
+                </li>
+            </ol>
+            <p>
+                You can find a documentation with detailed explanation and usage in the
+                <a onclick="(function(e){window.cep.util.openURLInDefaultBrowser('https:\/\/github.com/SEOL-creator/ae-plugin-apple-music-styled-lyrics-generator');})()">Github repository</a>.
+            </p>
         </div>
-        <button id="make">Make</button>
     </body>
 </html>

@@ -32,7 +32,7 @@
                 </Lifecycle>
                 <UI>
                     <Type>Panel</Type>
-                    <Menu>Generate APMS Lyrics Composition</Menu>
+                    <Menu>APMS Lyrics</Menu>
                     <Geometry>
                         <Size>
                             <Height>500</Height>
